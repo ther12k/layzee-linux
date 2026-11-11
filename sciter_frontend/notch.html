@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html window-frame="transparent" window-resizable="false">
+<head>
+    <title>Layzee Notch (Sciter/QuickJS)</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            overflow: hidden;
+            font-family: system-ui, -apple-system, sans-serif;
+            user-select: none;
+        }
+
+        #notch-container {
+            margin: 0 auto;
+            width: 280px;
+            height: 38px;
+            background: #000000;
+            border-radius: 0 0 18px 18px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 14px;
+            color: #ffffff;
+            cursor: pointer;
+            transition: width 0.3s ease, height 0.3s ease, border-radius 0.3s ease;
+        }
+
+        #notch-container:hover, #notch-container.expanded {
+            width: 520px;
+            height: 180px;
+            border-radius: 22px;
+            margin-top: 8px;
+        }
+
+        .pill-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            width: 100%;
+        }
+
+        .icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #2563eb;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .status-text {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-weight: 500;
+        }
+
+        .visualizer {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            height: 14px;
+        }
+
+        .bar {
+            width: 3px;
+            height: 6px;
+            background: #22c55e;
+            border-radius: 2px;
+            transition: height 0.08s ease;
+        }
+
+        /* Expanded card view */
+        .expanded-details {
+            display: none;
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+            padding-top: 10px;
+        }
+
+        #notch-container:hover .expanded-details,
+        #notch-container.expanded .expanded-details {
+            display: flex;
+        }
+
+        #notch-container:hover .pill-content,
+        #notch-container.expanded .pill-content {
+            display: none;
+        }
+
+        .track-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .album-art {
+            width: 48px;
+            height: 48px;
+            border-radius: 8px;
+            background: #27272a;
+            object-fit: cover;
+        }
+
+        .meta {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .track-title {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .track-artist {
+            font-size: 12px;
+            color: #a1a1aa;
+        }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            margin-top: 14px;
+        }
+
+        .btn {
+            background: #18181b;
+            border: 1px solid #27272a;
+            color: white;
+            border-radius: 8px;
+            padding: 6px 14px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            background: #27272a;
+        }
+
+        .quick-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: auto;
+            padding-top: 8px;
+            border-top: 1px solid #27272a;
+            font-size: 11px;
+            color: #71717a;
+        }
+    </style>
+</head>
+<body>
+    <div id="notch-container">
+        <!-- Compact mode -->
+        <div class="pill-content">
+            <div class="icon">Z</div>
+            <div class="status-text" id="status-title">Zee · Ready</div>
+            <div class="visualizer">
+                <div class="bar" id="b1"></div>
+                <div class="bar" id="b2"></div>
+                <div class="bar" id="b3"></div>
+                <div class="bar" id="b4"></div>
+            </div>
+        </div>
+
+        <!-- Expanded card mode -->
+        <div class="expanded-details">
+            <div class="track-info">
+                <div class="album-art" id="art"></div>
+                <div class="meta">
+                    <div class="track-title" id="exp-title">Idle · Ready to Type</div>
+                    <div class="track-artist" id="exp-artist">Hold CapsLock to speak</div>
+                </div>
+            </div>
+            <div class="controls">
+                <button class="btn" id="btn-prev">⏮</button>
+                <button class="btn" id="btn-play">⏯</button>
+                <button class="btn" id="btn-next">⏭</button>
+                <button class="btn" id="btn-dictate">🎙 Dictate</button>
+                <button class="btn" id="btn-shot">📸 Shot</button>
+            </div>
+            <div class="quick-actions">
+                <span>Layzee (Sciter + QuickJS + Native GTK)</span>
+                <span id="btn-settings" style="cursor: pointer; color: #60a5fa;">Settings ⚙</span>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // QuickJS script running inside Sciter
+        document.on("click", "#btn-dictate", () => {
+            Window.this.xcall("on_action", "dictate");
+        });
+        document.on("click", "#btn-shot", () => {
+            Window.this.xcall("on_action", "shot");
+        });
+        document.on("click", "#btn-settings", () => {
+            Window.this.xcall("on_action", "settings");
+        });
+        document.on("click", "#btn-play", () => {
+            Window.this.xcall("on_action", "media_toggle");
+        });
+        document.on("click", "#btn-next", () => {
+            Window.this.xcall("on_action", "media_next");
+        });
+        document.on("click", "#btn-prev", () => {
+            Window.this.xcall("on_action", "media_prev");
+        });
+
+        // Functions called from Python
+        globalThis.updateMedia = function(media) {
+            if (media && media.title) {
+                document.getElementById("status-title").innerText = media.title;
+                document.getElementById("exp-title").innerText = media.title;
+                document.getElementById("exp-artist").innerText = media.artist || "Unknown Artist";
+            } else {
+                document.getElementById("status-title").innerText = "Zee · Ready";
+                document.getElementById("exp-title").innerText = "Idle · Ready to Type";
+                document.getElementById("exp-artist").innerText = "Hold CapsLock to speak";
+            }
+        };
+
+        globalThis.updateViz = function(b1, b2, b3, b4) {
+            document.getElementById("b1").style.height = `${Math.round(b1 * 16)}px`;
+            document.getElementById("b2").style.height = `${Math.round(b2 * 16)}px`;
+            document.getElementById("b3").style.height = `${Math.round(b3 * 16)}px`;
+            document.getElementById("b4").style.height = `${Math.round(b4 * 16)}px`;
+        };
+
+        globalThis.updateStatus = function(state, text) {
+            document.getElementById("status-title").innerText = text;
+        };
+    </script>
+</body>
+</html>
