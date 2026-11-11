@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Layzee
+Comment=Dynamic Notch, Lazytype voice typing & Lazyshot for Ubuntu
+Exec=/home/rizky/Workspace/Learning/notchbar/run.sh
+Icon=accessories-character-map
+Terminal=false
+Type=Application
+Categories=Utility;AudioVideo;
+StartupNotify=true
