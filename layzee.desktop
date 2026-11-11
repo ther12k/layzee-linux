@@ -1,9 +1,11 @@
 [Desktop Entry]
 Name=Layzee
-Comment=Dynamic Notch, Lazytype voice typing & Lazyshot for Ubuntu
+GenericName=Dynamic Notch & Voice Typing
+Comment=Dynamic Island Notch, Lazytype voice typing & Lazyshot for Ubuntu
 Exec=/home/rizky/Workspace/Learning/notchbar/run.sh
-Icon=accessories-character-map
+Icon=/home/rizky/Workspace/Learning/notchbar/layzee.png
 Terminal=false
 Type=Application
 Categories=Utility;AudioVideo;
 StartupNotify=true
+StartupWMClass=layzee.py
