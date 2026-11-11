@@ -273,14 +273,27 @@ class WindowManager:
                 h = payload.get("h", 40)
                 self._start_drag(w, h)
                 res = None
+            elif cmd == "notch_drag_start":
+                if self.notch_win:
+                    self.notch_win.is_dragging = True
+                    # Instantly expand input shape to full screen so mouse is not clipped anywhere
+                    rect = cairo.RectangleInt(0, 0, self.notch_win.screen_w, self.notch_win.screen_h)
+                    reg = cairo.Region(rect)
+                    self.notch_win.input_shape_combine_region(reg)
+                res = None
             elif cmd == "notch_pos_update":
                 new_pos = payload.get("pos")
                 if new_pos:
                     self.settings["island_pos"] = new_pos
                     self.settings["notch_style"] = "island"
                     self.emit("notch-pos", new_pos)
+                if self.notch_win:
+                    self.notch_win.is_dragging = True
                 res = None
             elif cmd == "notch_drag_finish":
+                if self.notch_win:
+                    self.notch_win.is_dragging = False
+                    GLib.idle_add(lambda: self.notch_win.update_input_region(self.notch_win.current_region))
                 self.config.save_settings(self.settings)
                 self.emit("settings", self.settings)
                 self.emit("notch-drag-end", True)
@@ -540,6 +553,14 @@ class NotchWindow(Gtk.Window):
                 qp = root.query_pointer()
                 px = qp.root_x
                 py = qp.root_y
+
+                # Convert root screen coordinates to GTK window-relative coordinates
+                win_pos = self.get_position()
+                win_x = win_pos[0] if win_pos else 0
+                win_y = win_pos[1] if win_pos else 0
+                wx = px - win_x
+                wy = py - win_y
+
                 r = self.current_region
                 rx = r.get("x", 0)
                 ry = r.get("y", 0)
@@ -548,16 +569,16 @@ class NotchWindow(Gtk.Window):
                 edge = r.get("edge", False)
 
                 if edge:
-                    if ry == 0:
-                        hit = (rx - 15 <= px <= rx + rw + 15) and (py <= 16)
-                    elif ry >= self.screen_h - 15:
-                        hit = (rx - 15 <= px <= rx + rw + 15) and (py >= self.screen_h - 16)
-                    elif rx == 0:
-                        hit = (px <= 16) and (ry - 15 <= py <= ry + rh + 15)
+                    if ry <= 5:
+                        hit = (rx - 25 <= wx <= rx + rw + 25) and (wy <= 28)
+                    elif ry >= self.screen_h - 30:
+                        hit = (rx - 25 <= wx <= rx + rw + 25) and (wy >= self.screen_h - 40)
+                    elif rx <= 5:
+                        hit = (wx <= 28) and (ry - 25 <= wy <= ry + rh + 25)
                     else:
-                        hit = (px >= self.screen_w - 16) and (ry - 15 <= py <= ry + rh + 15)
+                        hit = (wx >= self.screen_w - 40) and (ry - 25 <= wy <= ry + rh + 25)
                 else:
-                    hit = (rx <= px <= rx + rw) and (ry <= py <= ry + rh)
+                    hit = (rx - 10 <= wx <= rx + rw + 10) and (ry - 10 <= wy <= ry + rh + 10)
 
                 if hit and not self.is_hovering:
                     self.is_hovering = True
@@ -566,7 +587,7 @@ class NotchWindow(Gtk.Window):
                     self.is_hovering = False
                     self.mgr.emit("notch-hover", False)
 
-                time.sleep(0.05)
+                time.sleep(0.04)
         except Exception as e:
             print(f"[Hover] Monitor error: {e}")
 
@@ -580,18 +601,23 @@ class NotchWindow(Gtk.Window):
             edge = r.get("edge", False)
 
             if edge:
-                if y == 0:
-                    h = max(h, 16)
-                elif y >= self.screen_h - 15:
-                    y = self.screen_h - 16
-                    h = 16
-                elif x == 0:
-                    w = max(w, 16)
-                elif x >= self.screen_w - 15:
-                    x = self.screen_w - 16
-                    w = 16
+                if y <= 5:
+                    h = max(h, 28)
+                elif y >= self.screen_h - 30:
+                    y = self.screen_h - 28
+                    h = 28
+                elif x <= 5:
+                    w = max(w, 28)
+                elif x >= self.screen_w - 30:
+                    x = self.screen_w - 28
+                    w = 28
 
-            rect = cairo.RectangleInt(x, y, w, h)
+            # If user is actively dragging the island, make the whole window receive pointer events
+            # so pointermove doesn't drop outside the current region
+            if getattr(self, "is_dragging", False):
+                rect = cairo.RectangleInt(0, 0, self.screen_w, self.screen_h)
+            else:
+                rect = cairo.RectangleInt(x, y, w, h)
             reg = cairo.Region(rect)
             self.input_shape_combine_region(reg)
         except Exception as e:

@@ -2,6 +2,12 @@
 import os
 import sys
 import signal
+import ctypes
+
+try:
+    ctypes.cdll.LoadLibrary('libX11.so.6').XInitThreads()
+except Exception:
+    pass
 
 import gi
 gi.require_version('Gtk', '3.0')
