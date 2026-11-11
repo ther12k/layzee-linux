@@ -294,6 +294,7 @@ class WindowManager:
                 if self.notch_win:
                     self.notch_win.is_dragging = False
                     GLib.idle_add(lambda: self.notch_win.update_input_region(self.notch_win.current_region))
+                    GLib.idle_add(self.notch_win._ensure_on_top)
                 self.config.save_settings(self.settings)
                 self.emit("settings", self.settings)
                 self.emit("notch-drag-end", True)
@@ -492,6 +493,11 @@ class NotchWindow(Gtk.Window):
         self.set_title("layzee notch")
         self.set_app_paintable(True)
         self.set_decorated(False)
+        # NOTIFICATION type hint exempts the window from Mutter's workarea
+        # constraint + auto-maximize heuristic. Without it Mutter flags the
+        # fullscreen-sized notch as MAXIMIZED and then silently denies every
+        # client restack, letting other above-windows cover the pill.
+        self.set_type_hint(Gdk.WindowTypeHint.NOTIFICATION)
         self.set_keep_above(True)
         self.set_skip_taskbar_hint(True)
         self.set_skip_pager_hint(True)
@@ -502,13 +508,21 @@ class NotchWindow(Gtk.Window):
         if visual:
             self.set_visual(visual)
 
-        # Full screen dimensions so island can move to any corner/edge
+        # Size the overlay to the monitor workarea (excludes GNOME top bar
+        # and dock) and anchor it to the workarea origin so the pill is
+        # truly centered on the visible desktop.
         screen_w = screen.get_width()
         screen_h = screen.get_height()
         self.screen_w = screen_w
         self.screen_h = screen_h
-        self.set_default_size(screen_w, screen_h)
-        self.move(0, 0)
+        try:
+            mon = screen.get_monitor_workarea(screen.get_primary_monitor())
+            wa_x, wa_y, wa_w, wa_h = mon.x, mon.y, mon.width, mon.height
+        except Exception:
+            wa_x, wa_y, wa_w, wa_h = 0, 0, screen_w, screen_h
+        self.wa_x, self.wa_y = wa_x, wa_y
+        self.set_default_size(wa_w, wa_h)
+        self.move(wa_x, wa_y)
 
         # Setup WebKit
         ucm = WebKit2.UserContentManager()
@@ -540,10 +554,24 @@ class NotchWindow(Gtk.Window):
         init_x = (screen_w - init_w) // 2
         self.current_region = {"x": init_x, "y": 0, "w": init_w, "h": init_h, "edge": False}
         self.is_hovering = False
+        self._xid = 0
+        self._raise_tick = 0
         self.update_input_region(self.current_region)
+
+        # Capture the X11 window id on the main thread once mapped
+        self.connect("map", self._on_map)
 
         # Start hover monitor thread for auto-hide un-tucking
         threading.Thread(target=self._hover_monitor, daemon=True).start()
+
+    def _on_map(self, *args):
+        try:
+            gw = self.get_window()
+            if gw:
+                self._xid = gw.get_xid()
+        except Exception:
+            pass
+        return False
 
     def _hover_monitor(self):
         try:
@@ -587,9 +615,85 @@ class NotchWindow(Gtk.Window):
                 else:
                     self.is_hovering = False
 
+                # Periodically re-assert keep-above so other always-on-top
+                # windows raised later cannot permanently cover the notch.
+                # Two redundant mechanisms because Mutter can deny a plain
+                # GDK raise_() between above-windows:
+                #   1. EWMH _NET_WM_STATE client message (add ABOVE)
+                #   2. Direct X11 ConfigureWindow (StackMode Above)
+                self._raise_tick += 1
+                if self._raise_tick % 50 == 0 and not getattr(self, "is_dragging", False):
+                    try:
+                        xid = getattr(self, "_xid", 0)
+                        if not xid:
+                            xid = self._scan_xid(d)
+                            if xid:
+                                self._xid = xid
+                        if xid:
+                            net_wm_state = d.intern_atom('_NET_WM_STATE')
+                            net_wm_above = d.intern_atom('_NET_WM_STATE_ABOVE')
+                            from Xlib.protocol import event as xevent
+                            # Re-assert ABOVE and restack to the very top
+                            cm = xevent.ClientMessage(
+                                window=xid, client_type=net_wm_state,
+                                data=(32, [1, net_wm_above, 0, 0, 0]))
+                            root.send_event(cm, event_mask=X.SubstructureRedirectMask | X.SubstructureNotifyMask)
+                            xwin = d.create_resource_object('window', xid)
+                            xwin.configure(stack_mode=X.Above)
+                            d.flush()
+                            # Geometry-drift guard: if Mutter ever shrank or
+                            # moved the overlay off-screen, restore it.
+                            g = xwin.get_geometry()
+                            t = xwin.translate_coords(root, 0, 0)
+                            if g.width < int(self.screen_w * 0.8) or t.x < -50:
+                                GLib.idle_add(self._restore_geometry)
+                    except Exception:
+                        pass
+
                 time.sleep(0.04)
         except Exception as e:
             print(f"[Hover] Monitor error: {e}")
+
+    def _scan_xid(self, d):
+        """One-shot fallback: find the notch xid by window title."""
+        try:
+            root = d.screen().root
+            prop = root.get_full_property(
+                d.intern_atom('_NET_CLIENT_LIST_STACKING'), X.AnyPropertyType)
+            if not prop:
+                return 0
+            for wid in prop.value:
+                try:
+                    win = d.create_resource_object('window', wid)
+                    name = win.get_wm_name()
+                    if name and 'layzee notch' in str(name).lower():
+                        return wid
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return 0
+
+    def _ensure_on_top(self):
+        try:
+            self.set_keep_above(True)
+            gdk_win = self.get_window()
+            if gdk_win:
+                if not getattr(self, "_xid", 0):
+                    self._xid = gdk_win.get_xid()
+                gdk_win.raise_()
+        except Exception:
+            pass
+        return False
+
+    def _restore_geometry(self):
+        try:
+            self.resize(self.screen_w, self.screen_h)
+            self.move(getattr(self, "wa_x", 0), getattr(self, "wa_y", 0))
+            self.set_keep_above(True)
+        except Exception:
+            pass
+        return False
 
     def update_input_region(self, r):
         try:
