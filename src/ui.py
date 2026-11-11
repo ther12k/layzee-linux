@@ -577,15 +577,15 @@ class NotchWindow(Gtk.Window):
                         hit = (wx <= 28) and (ry - 25 <= wy <= ry + rh + 25)
                     else:
                         hit = (wx >= self.screen_w - 40) and (ry - 25 <= wy <= ry + rh + 25)
-                else:
-                    hit = (rx - 10 <= wx <= rx + rw + 10) and (ry - 10 <= wy <= ry + rh + 10)
 
-                if hit and not self.is_hovering:
-                    self.is_hovering = True
-                    self.mgr.emit("notch-hover", True)
-                elif not hit and self.is_hovering:
+                    if hit and not self.is_hovering:
+                        self.is_hovering = True
+                        self.mgr.emit("notch-hover", True)
+                    elif not hit and self.is_hovering:
+                        self.is_hovering = False
+                        self.mgr.emit("notch-hover", False)
+                else:
                     self.is_hovering = False
-                    self.mgr.emit("notch-hover", False)
 
                 time.sleep(0.04)
         except Exception as e:
@@ -611,6 +611,13 @@ class NotchWindow(Gtk.Window):
                 elif x >= self.screen_w - 30:
                     x = self.screen_w - 28
                     w = 28
+            else:
+                # Add generous 35px padding around card so mouse movements inside or near edges
+                # never lose X11 input mask focus
+                x = max(0, x - 35)
+                y = max(0, y - 10)
+                w = min(self.screen_w - x, w + 70)
+                h = min(self.screen_h - y, h + 35)
 
             # If user is actively dragging the island, make the whole window receive pointer events
             # so pointermove doesn't drop outside the current region
