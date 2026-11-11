@@ -273,6 +273,18 @@ class WindowManager:
                 h = payload.get("h", 40)
                 self._start_drag(w, h)
                 res = None
+            elif cmd == "notch_pos_update":
+                new_pos = payload.get("pos")
+                if new_pos:
+                    self.settings["island_pos"] = new_pos
+                    self.settings["notch_style"] = "island"
+                    self.emit("notch-pos", new_pos)
+                res = None
+            elif cmd == "notch_drag_finish":
+                self.config.save_settings(self.settings)
+                self.emit("settings", self.settings)
+                self.emit("notch-drag-end", True)
+                res = None
             elif cmd == "notch_focus":
                 res = None
             elif cmd == "notch_region":
