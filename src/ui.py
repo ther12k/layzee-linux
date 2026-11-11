@@ -269,6 +269,9 @@ class WindowManager:
                 self.config.save_notch(self.notch_data)
                 res = None
             elif cmd == "notch_drag":
+                w = payload.get("w", 200)
+                h = payload.get("h", 40)
+                self._start_drag(w, h)
                 res = None
             elif cmd == "notch_focus":
                 res = None
@@ -382,6 +385,50 @@ class WindowManager:
         elif win_label == "shot" and self.shot_win:
             self.shot_win.eval_js(script)
 
+    def _start_drag(self, w, h):
+        def _drag_worker():
+            try:
+                d = display.Display()
+                screen = d.screen()
+                root = screen.root
+                sw = screen.width_in_pixels
+                sh = screen.height_in_pixels
+
+                last_pos = None
+                time.sleep(0.05)
+
+                while True:
+                    qp = root.query_pointer()
+                    # Check if button 1 (left click) is held
+                    if not (qp.mask & X.Button1Mask):
+                        break
+
+                    mx = qp.root_x
+                    my = qp.root_y
+
+                    # Calculate position anchor (tl, tc, tr, ml, mr, bl, bc, br)
+                    v = 't' if my < sh * 0.33 else ('b' if my > sh * 0.66 else 'm')
+                    hl = 'l' if mx < sw * 0.33 else ('r' if mx > sw * 0.66 else 'c')
+                    if v == 'm' and hl == 'c':
+                        v = 't'
+                    pos = f"{v}{hl}"
+
+                    if pos != last_pos:
+                        last_pos = pos
+                        self.emit("notch-pos", pos)
+
+                    time.sleep(0.03)
+
+                # Drag finished: save pos in settings
+                if last_pos:
+                    self.settings["island_pos"] = last_pos
+                    self.config.save_settings(self.settings)
+                self.emit("notch-drag-end", True)
+            except Exception as e:
+                print(f"[Drag] Worker error: {e}")
+
+        threading.Thread(target=_drag_worker, daemon=True).start()
+
     def _hotkey_listener(self):
         try:
             d = display.Display()
@@ -430,10 +477,12 @@ class NotchWindow(Gtk.Window):
         if visual:
             self.set_visual(visual)
 
-        # Full screen width at top
+        # Full screen dimensions so island can move to any corner/edge
         screen_w = screen.get_width()
+        screen_h = screen.get_height()
         self.screen_w = screen_w
-        self.set_default_size(screen_w, 420)
+        self.screen_h = screen_h
+        self.set_default_size(screen_w, screen_h)
         self.move(0, 0)
 
         # Setup WebKit
@@ -464,14 +513,72 @@ class NotchWindow(Gtk.Window):
         init_w = 200
         init_h = 36
         init_x = (screen_w - init_w) // 2
-        self.update_input_region({"x": init_x, "y": 0, "w": init_w, "h": init_h})
+        self.current_region = {"x": init_x, "y": 0, "w": init_w, "h": init_h, "edge": False}
+        self.is_hovering = False
+        self.update_input_region(self.current_region)
+
+        # Start hover monitor thread for auto-hide un-tucking
+        threading.Thread(target=self._hover_monitor, daemon=True).start()
+
+    def _hover_monitor(self):
+        try:
+            d = display.Display()
+            root = d.screen().root
+            while True:
+                qp = root.query_pointer()
+                px = qp.root_x
+                py = qp.root_y
+                r = self.current_region
+                rx = r.get("x", 0)
+                ry = r.get("y", 0)
+                rw = r.get("w", 200)
+                rh = r.get("h", 40)
+                edge = r.get("edge", False)
+
+                if edge:
+                    if ry == 0:
+                        hit = (rx - 15 <= px <= rx + rw + 15) and (py <= 16)
+                    elif ry >= self.screen_h - 15:
+                        hit = (rx - 15 <= px <= rx + rw + 15) and (py >= self.screen_h - 16)
+                    elif rx == 0:
+                        hit = (px <= 16) and (ry - 15 <= py <= ry + rh + 15)
+                    else:
+                        hit = (px >= self.screen_w - 16) and (ry - 15 <= py <= ry + rh + 15)
+                else:
+                    hit = (rx <= px <= rx + rw) and (ry <= py <= ry + rh)
+
+                if hit and not self.is_hovering:
+                    self.is_hovering = True
+                    self.mgr.emit("notch-hover", True)
+                elif not hit and self.is_hovering:
+                    self.is_hovering = False
+                    self.mgr.emit("notch-hover", False)
+
+                time.sleep(0.05)
+        except Exception as e:
+            print(f"[Hover] Monitor error: {e}")
 
     def update_input_region(self, r):
         try:
+            self.current_region = r
             x = int(r.get("x", 0))
             y = int(r.get("y", 0))
             w = int(r.get("w", 200))
             h = int(r.get("h", 40))
+            edge = r.get("edge", False)
+
+            if edge:
+                if y == 0:
+                    h = max(h, 16)
+                elif y >= self.screen_h - 15:
+                    y = self.screen_h - 16
+                    h = 16
+                elif x == 0:
+                    w = max(w, 16)
+                elif x >= self.screen_w - 15:
+                    x = self.screen_w - 16
+                    w = 16
+
             rect = cairo.RectangleInt(x, y, w, h)
             reg = cairo.Region(rect)
             self.input_shape_combine_region(reg)
