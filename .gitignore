@@ -7,3 +7,6 @@ data/
 models/
 build/
 /tmp/
+bin/sciter/libsciter-gtk.so
+bin/sciter/usciter
+.zcode/
