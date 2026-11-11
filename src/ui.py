@@ -286,7 +286,11 @@ class WindowManager:
                 if new_pos:
                     self.settings["island_pos"] = new_pos
                     self.settings["notch_style"] = "island"
-                    self.emit("notch-pos", new_pos)
+                    if "x" in payload:
+                        self.settings["island_x"] = payload["x"]
+                    if "y" in payload:
+                        self.settings["island_y"] = payload["y"]
+                    self.emit("notch-pos", payload if isinstance(payload, dict) and "x" in payload else new_pos)
                 if self.notch_win:
                     self.notch_win.is_dragging = True
                 res = None
@@ -432,11 +436,9 @@ class WindowManager:
                     mx = qp.root_x
                     my = qp.root_y
 
-                    # Calculate position anchor (tl, tc, tr, ml, mr, bl, bc, br)
+                    # Calculate position anchor (tl, tc, tr, ml, mc, mr, bl, bc, br)
                     v = 't' if my < sh * 0.33 else ('b' if my > sh * 0.66 else 'm')
                     hl = 'l' if mx < sw * 0.33 else ('r' if mx > sw * 0.66 else 'c')
-                    if v == 'm' and hl == 'c':
-                        v = 't'
                     pos = f"{v}{hl}"
 
                     if pos != last_pos:
