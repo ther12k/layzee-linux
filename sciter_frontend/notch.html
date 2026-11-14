@@ -16,9 +16,9 @@
             margin: 0 auto;
             width: 280px;
             height: 38px;
-            background: #000000;
+            background: #1F2550;
             border-radius: 0 0 18px 18px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            box-shadow: 0 8px 28px rgba(15, 20, 60, 0.55);
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -241,6 +241,31 @@
 
         globalThis.updateStatus = function(state, text) {
             document.getElementById("status-title").innerText = text;
+        };
+        /* ── host protocol ─────────────────────────────────────────────
+         * hostTick() is called by the C host ~16x/s. It returns
+         * "rx,ry,rw,rh,drag": the notch's interactive bounds in window
+         * coordinates (the host applies them as a GTK input region for
+         * click-through) plus 1 while the pill is held for dragging
+         * (the host then moves the window with the global pointer, so
+         * drags cross the GNOME top bar freely). */
+        let expanded = false;
+        document.getElementById("notch-container").on("mouseenter", () => { expanded = true; });
+        document.getElementById("notch-container").on("mouseleave", () => { expanded = false; });
+
+        let dragHeld = false;
+        document.getElementById("notch-container").on("mousedown", () => { dragHeld = true; });
+        document.on("mouseup", () => { dragHeld = false; });
+
+        globalThis.hostTick = function() {
+            const el = document.getElementById("notch-container");
+            // cheap: pill is centered at top; expanded box is 520x188 @ y0
+            const w = expanded ? 532 : 300;
+            const h = expanded ? 192 : 42;
+            const view = Window.this.screenBox("window", "dimension");
+            const vw = view ? view[2] : 1920;
+            const x = Math.round((vw - w) / 2);
+            return `${x},0,${w},${h},${dragHeld ? 1 : 0}`;
         };
     </script>
 </body>
