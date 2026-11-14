@@ -117,10 +117,18 @@ int main(int argc, char **argv) {
     gtk_window_move(g_win, 0, 0);
     apply_input_region((sw - 320) / 2, 0, 320, 42);
 
-    wchar_t wurl[1024];
-    for (size_t i = 0; i < strlen(url) && i < 1023; ++i) wurl[i] = url[i];
-    wurl[strlen(url) < 1023 ? strlen(url) : 1023] = 0;
-    API->SciterLoadFile(g_hwnd, wurl);
+    /* Sciter strings are UTF-16 (char16_t), NOT platform wchar_t */
+    char16_t wurl[1024];
+    size_t ulen = strlen(url);
+    for (size_t i = 0; i < ulen && i < 1023; ++i) wurl[i] = (char16_t)(unsigned char)url[i];
+    wurl[ulen < 1023 ? ulen : 1023] = 0;
+    SBOOL loaded = API->SciterLoadFile(g_hwnd, (LPCWSTR)wurl);
+    fprintf(stderr, "lekuvo: url=%s loaded=%d\n", url, (int)loaded);
+    if (!loaded) {
+        /* last resort: inline blank page so the window at least shows */
+        API->SciterLoadHtml(g_hwnd, (LPCBYTE)"<html><body style='background:#1F2550'></body></html>",
+                            62, L"file://inline.html");
+    }
     gtk_widget_show_all(GTK_WIDGET(g_win));
 
     g_timeout_add(60, on_tick, NULL);
