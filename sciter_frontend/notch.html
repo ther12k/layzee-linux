@@ -192,8 +192,9 @@
                 <button class="btn" id="btn-shot">📸 Shot</button>
             </div>
             <div class="quick-actions">
-                <span>Layzee (Sciter + QuickJS + Native GTK)</span>
+                <span>Lekuvo (Sciter + QuickJS + Native GTK)</span>
                 <span id="btn-settings" style="cursor: pointer; color: #60a5fa;">Settings ⚙</span>
+                <span id="btn-exit" style="cursor: pointer; color: #ff9ec4; font-weight: bold;">Exit</span>
             </div>
         </div>
     </div>
@@ -257,15 +258,34 @@
         document.getElementById("notch-container").on("mousedown", () => { dragHeld = true; });
         document.on("mouseup", () => { dragHeld = false; });
 
+        /* exit with confirmation: first click arms, second within 3s quits */
+        let quitRequested = false;
+        let quitArmed = false;
+        document.on("click", "#btn-exit", () => {
+            if (quitArmed) {
+                quitRequested = true;
+            } else {
+                quitArmed = true;
+                const b = document.getElementById("btn-exit");
+                b.innerText = "Confirm exit?";
+                b.style.background = "#FF9EC4";
+                b.style.color = "#1F2550";
+                setTimeout(() => {
+                    quitArmed = false;
+                    b.innerText = "Exit";
+                    b.style.background = "";
+                    b.style.color = "";
+                }, 3000);
+            }
+        });
+
         globalThis.hostTick = function() {
-            const el = document.getElementById("notch-container");
-            // cheap: pill is centered at top; expanded box is 520x188 @ y0
             const w = expanded ? 532 : 300;
             const h = expanded ? 192 : 42;
             const view = Window.this.screenBox("window", "dimension");
             const vw = view ? view[2] : 1920;
             const x = Math.round((vw - w) / 2);
-            return `${x},0,${w},${h},${dragHeld ? 1 : 0}`;
+            return `${x},0,${w},${h},${dragHeld ? 1 : 0},${quitRequested ? 1 : 0}`;
         };
     </script>
 </body>

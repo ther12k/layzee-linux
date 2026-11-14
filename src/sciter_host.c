@@ -22,6 +22,7 @@ static ISciterAPI *API = NULL;
 static HWINDOW g_hwnd = 0;
 static GtkWindow *g_win = NULL;
 static int g_dragging = 0;
+static int g_quit = 0;
 static int g_drag_base_sx = 0, g_drag_base_sy = 0;
 static int g_drag_base_wx = 0, g_drag_base_wy = 0;
 
@@ -51,8 +52,8 @@ static gboolean on_tick(gpointer user_data) {
         if (ws) {
             char buf[128] = {0};
             for (UINT i = 0; ws[i] && i < 127; ++i) buf[i] = (char)(ws[i] & 0xff);
-            int rx = 0, ry = 0, rw = 300, rh = 40, drag = 0;
-            if (sscanf(buf, "%d,%d,%d,%d,%d", &rx, &ry, &rw, &rh, &drag) >= 4) {
+            int rx = 0, ry = 0, rw = 300, rh = 40, drag = 0, quit = 0;
+            if (sscanf(buf, "%d,%d,%d,%d,%d,%d", &rx, &ry, &rw, &rh, &drag, &quit) >= 4) {
                 apply_input_region(rx, ry, rw, rh);
                 if (drag && !g_dragging) {
                     g_dragging = 1;
@@ -67,6 +68,7 @@ static gboolean on_tick(gpointer user_data) {
                 } else if (!drag) {
                     g_dragging = 0;
                 }
+                if (quit) g_quit = 1;
             }
         }
         API->ValueClear(&rv);
@@ -80,6 +82,10 @@ static gboolean on_tick(gpointer user_data) {
         gtk_window_move(g_win,
                         g_drag_base_wx + (px - g_drag_base_sx),
                         g_drag_base_wy + (py - g_drag_base_sy));
+    }
+    if (g_quit) {
+        gtk_main_quit();
+        return FALSE;
     }
     return TRUE;
 }
